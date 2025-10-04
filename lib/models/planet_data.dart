@@ -2,126 +2,122 @@ import 'package:flutter/material.dart';
 
 class Planet {
   final String name;
-  final int positionFromSun;
-  final double radius;
-  final double distanceFromSun; // in millions of km
-  final String yearLength;
+  final double radius; // visual radius in pixels
+  final double distanceFromSun; // in million km
+  final int positionFromSun; // Mercury = 1, Venus = 2, ...
   final String description;
   final String flareEffectDescription;
   final bool hasMagneticField;
   final Color color;
 
+  // 🌍 New fields for AI integration
+  String? aiSummary; // preloaded Gemini short summary about living conditions
+  bool isLoadingSummary; // to track when data is being fetched
+
   Planet({
     required this.name,
-    required this.positionFromSun,
     required this.radius,
     required this.distanceFromSun,
-    required this.yearLength,
+    required this.positionFromSun,
     required this.description,
     required this.flareEffectDescription,
     required this.hasMagneticField,
     required this.color,
+    this.aiSummary,
+    this.isLoadingSummary = false,
   });
 }
 
+// 🌞 Planets list
 final List<Planet> planets = [
   Planet(
     name: "Sun",
-    positionFromSun: 0,
-    radius: 38,
+    radius: 40,
     distanceFromSun: 0,
-    yearLength: "—",
-    description: "The center of our Solar System, a G-type main-sequence star.",
-    flareEffectDescription: "Produces intense bursts of solar radiation.",
-    hasMagneticField: true,
-    color: Colors.orangeAccent,
-  ),
-  Planet(
-    name: "Mercury",
-    positionFromSun: 1,
-    radius: 8.0,
-    distanceFromSun: 57.9,
-    yearLength: "88 Earth days",
-    description: "Closest planet to the Sun and smallest in the Solar System.",
-    flareEffectDescription: "Heavily affected by solar radiation.",
-    hasMagneticField: true,
-    color: Colors.grey,
-  ),
-  Planet(
-    name: "Venus",
-    positionFromSun: 2,
-    radius: 12.0, // smaller than Earth
-    distanceFromSun: 108.2,
-    yearLength: "225 Earth days",
-    description: "Venus is bright and hot with a thick, toxic atmosphere.",
-    flareEffectDescription: "Solar flares heat its clouds intensely.",
+    positionFromSun: 0,
+    description: "The star at the center of the Solar System",
+    flareEffectDescription: "Generates solar flares affecting planets",
     hasMagneticField: false,
     color: Colors.yellowAccent,
   ),
   Planet(
+    name: "Mercury",
+    radius: 4,
+    distanceFromSun: 57.9,
+    positionFromSun: 1,
+    description: "Closest planet to the Sun",
+    flareEffectDescription: "Minimal effect",
+    hasMagneticField: false,
+    color: Colors.grey,
+  ),
+  Planet(
+    name: "Venus",
+    radius: 6,
+    distanceFromSun: 108.2,
+    positionFromSun: 2,
+    description: "Second planet from the Sun",
+    flareEffectDescription: "Slight heating effect",
+    hasMagneticField: false,
+    color: Colors.orangeAccent,
+  ),
+  Planet(
     name: "Earth",
-    positionFromSun: 3,
-    radius: 14.0, // slightly bigger than Venus
+    radius: 6.5,
     distanceFromSun: 149.6,
-    yearLength: "365 Earth days",
-    description: "Our home planet, full of water and life.",
-    flareEffectDescription: "Auroras appear during solar storms.",
+    positionFromSun: 3,
+    description: "Our home planet",
+    flareEffectDescription: "Moderate effect on atmosphere",
     hasMagneticField: true,
-    color: Colors.blueAccent,
+    color: Colors.blue,
   ),
   Planet(
     name: "Mars",
-    positionFromSun: 4,
-    radius: 10.0,
+    radius: 5,
     distanceFromSun: 227.9,
-    yearLength: "687 Earth days",
-    description: "The red planet with a thin atmosphere.",
-    flareEffectDescription: "Solar wind strips away its thin atmosphere.",
-    hasMagneticField: false,
-    color: Colors.redAccent,
+    positionFromSun: 4,
+    description: "The Red Planet",
+    flareEffectDescription: "Can affect magnetic field",
+    hasMagneticField: true,
+    color: Colors.red,
   ),
   Planet(
     name: "Jupiter",
-    positionFromSun: 5,
-    radius: 25.0,
+    radius: 12,
     distanceFromSun: 778.5,
-    yearLength: "12 Earth years",
-    description: "The gas giant with a Great Red Spot storm.",
-    flareEffectDescription: "Absorbs solar energy in its massive atmosphere.",
+    positionFromSun: 5,
+    description: "Largest planet in the Solar System",
+    flareEffectDescription: "Minimal effect due to distance",
     hasMagneticField: true,
-    color: Colors.orange,
+    color: Colors.brown,
   ),
   Planet(
     name: "Saturn",
+    radius: 10,
+    distanceFromSun: 1434,
     positionFromSun: 6,
-    radius: 22.0,
-    distanceFromSun: 1434.0,
-    yearLength: "29 Earth years",
-    description: "Famous for its beautiful ring system.",
-    flareEffectDescription: "Rings shimmer in sunlight.",
+    description: "Famous for its rings",
+    flareEffectDescription: "Minimal effect due to distance",
     hasMagneticField: true,
-    color: Colors.amberAccent,
+    color: Colors.yellow,
   ),
   Planet(
     name: "Uranus",
+    radius: 8,
+    distanceFromSun: 2871,
     positionFromSun: 7,
-    radius: 18.0,
-    distanceFromSun: 2871.0,
-    yearLength: "84 Earth years",
-    description: "Icy blue-green planet with a tilted axis.",
-    flareEffectDescription: "Solar storms interact with its methane atmosphere.",
+    description: "Ice giant",
+    flareEffectDescription: "Minimal effect due to distance",
     hasMagneticField: true,
-    color: Colors.cyanAccent,
+    color: Colors.lightBlueAccent,
   ),
   Planet(
     name: "Neptune",
+    radius: 8,
+    distanceFromSun: 4495,
     positionFromSun: 8,
-    radius: 17.0,
-    distanceFromSun: 4495.0,
-    yearLength: "165 Earth years",
-    description: "The farthest planet, cold and windy.",
-    flareEffectDescription: "Barely touched by the Sun’s rays.",
+    description: "Farthest planet from the Sun",
+    flareEffectDescription: "Minimal effect due to distance",
     hasMagneticField: true,
-    color: Colors.blue,
+    color: Colors.blueAccent,
   ),
 ];

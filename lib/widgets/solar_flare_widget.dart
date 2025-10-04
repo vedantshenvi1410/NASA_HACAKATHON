@@ -1,4 +1,3 @@
-// ignore: unused_import
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/planet_data.dart';
@@ -6,7 +5,12 @@ import '../models/planet_data.dart';
 class SolarFlareWidget extends StatefulWidget {
   final double zoom;
   final List<Planet> planets;
-  const SolarFlareWidget({super.key, required this.zoom, required this.planets});
+
+  const SolarFlareWidget({
+    super.key,
+    required this.zoom,
+    required this.planets,
+  });
 
   @override
   State<SolarFlareWidget> createState() => _SolarFlareWidgetState();
@@ -19,9 +23,10 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(seconds: 3))
-          ..forward();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..forward();
   }
 
   @override
@@ -32,16 +37,18 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
 
   @override
   Widget build(BuildContext context) {
-    double centerX = MediaQuery.of(context).size.width / 2;
-    double centerY = MediaQuery.of(context).size.height / 2;
+    final centerX = MediaQuery.of(context).size.width / 2;
+    final centerY = MediaQuery.of(context).size.height / 2;
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-        double radius = _controller.value * 600 * widget.zoom;
-        double opacity = 1 - _controller.value;
+        final radius = _controller.value * 600 * widget.zoom;
+        final opacity = (1 - _controller.value).clamp(0.0, 1.0);
+
         return Stack(
           children: [
+            // Expanding solar flare ring
             Positioned(
               left: centerX - radius,
               top: centerY - radius,
@@ -51,26 +58,34 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: Colors.orangeAccent.withOpacity(0.7 * opacity),
-                      width: 4),
+                    color: Colors.orangeAccent.withOpacity(0.7 * opacity),
+                    width: 4 * widget.zoom,
+                  ),
                 ),
               ),
             ),
-            ...widget.planets.map((p) {
-              double distance = p.positionFromSun * 60.0 * widget.zoom;
-              if (radius >= distance) {
+
+            // Planet flare effects
+            ...widget.planets.map((planet) {
+              // Distance from sun in screen pixels (scaled)
+              final planetDistance = planet.positionFromSun * 60.0 * widget.zoom;
+
+              // Only affect planets within flare radius
+              if (radius >= planetDistance) {
                 return Positioned(
-                  left: centerX + distance - p.radius,
-                  top: centerY - p.radius,
+                  left: centerX + cos(planetDistance) * planetDistance - planet.radius * widget.zoom,
+                  top: centerY + sin(planetDistance) * planetDistance - planet.radius * widget.zoom,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    width: p.radius * 2 + (p.hasMagneticField ? 10 : 0),
-                    height: p.radius * 2 + (p.hasMagneticField ? 10 : 0),
+                    width: planet.radius * 2 * widget.zoom +
+                        (planet.hasMagneticField ? 10 * widget.zoom : 0),
+                    height: planet.radius * 2 * widget.zoom +
+                        (planet.hasMagneticField ? 10 * widget.zoom : 0),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: p.hasMagneticField
-                          ? Colors.cyanAccent.withOpacity(0.3)
-                          : Colors.red.withOpacity(0.3),
+                      color: planet.hasMagneticField
+                          ? Colors.cyanAccent.withOpacity(0.3 * opacity)
+                          : Colors.red.withOpacity(0.3 * opacity),
                     ),
                   ),
                 );

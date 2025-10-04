@@ -4,11 +4,13 @@ import '../models/planet_data.dart';
 
 class PlanetDetailsPanel extends StatelessWidget {
   final Planet planet;
+  final String summary;
   final VoidCallback onClose;
 
   const PlanetDetailsPanel({
     super.key,
     required this.planet,
+    required this.summary,
     required this.onClose,
   });
 
@@ -21,7 +23,7 @@ class PlanetDetailsPanel extends StatelessWidget {
       child: GestureDetector(
         onTap: () {},
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.4,
+          height: MediaQuery.of(context).size.height * 0.35,
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.1),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
@@ -52,23 +54,17 @@ class PlanetDetailsPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      "Distance from Sun: ${planet.distanceFromSun}",
+                      "Distance from Sun: ${planet.distanceFromSun} million km",
                       style: const TextStyle(fontSize: 16),
                     ),
                     Text(
-                      "Year Length: ${planet.yearLength}",
+                      "Position from Sun: ${planet.positionFromSun}",
                       style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      planet.description,
+                      summary,
                       style: const TextStyle(fontSize: 14),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      planet.flareEffectDescription,
-                      style: const TextStyle(
-                          fontSize: 14, fontStyle: FontStyle.italic),
                     ),
                   ],
                 ),

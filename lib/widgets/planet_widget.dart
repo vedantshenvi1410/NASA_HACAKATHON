@@ -35,7 +35,7 @@ class PlanetWidget extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            planet.name[0], // optional: first letter of planet
+            planet.name[0],
             style: TextStyle(
                 color: Colors.white,
                 fontSize: 12 * zoom,
