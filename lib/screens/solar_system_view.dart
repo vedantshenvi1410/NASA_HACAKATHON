@@ -380,7 +380,7 @@ class FloatingPlanetCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              planet.description ?? 'No description available.',
+              planet.description,
               style: const TextStyle(fontSize: 16, color: Colors.white70),
             ),
             const SizedBox(height: 12),

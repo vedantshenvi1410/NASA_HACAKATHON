@@ -4,7 +4,7 @@ import 'screens/solar_system_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env"); // Load API key
+  await  dotenv.load(fileName: ".env"); // Load API key
 
   runApp(const ProjectHeliosApp());
 }
