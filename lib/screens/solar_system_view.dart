@@ -1,7 +1,5 @@
-// lib/screens/solar_system_view.dart
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:vibration/vibration.dart';
@@ -12,12 +10,12 @@ import '../widgets/planet_widget.dart';
 import '../widgets/solar_flare_widget.dart';
 import '../widgets/starfield_widget.dart';
 import '../widgets/comet_widget.dart';
+import '../components/navbar.dart';
 import '../preload.dart';
 import '../backend/level_brain.dart';
 import '../components/level_overlay.dart';
 import '../widgets/earth_magnetic_visual.dart';
 
-/// Provider controlling planet selection & flare state
 class SolarSystemProvider extends ChangeNotifier {
   Planet? selectedPlanet;
   bool flareActive = false;
@@ -37,7 +35,6 @@ class SolarSystemProvider extends ChangeNotifier {
   }
 }
 
-/// Main wrapper
 class SolarSystemView extends StatelessWidget {
   const SolarSystemView({super.key});
 
@@ -53,7 +50,6 @@ class SolarSystemView extends StatelessWidget {
   }
 }
 
-/// Body widget
 class _SolarSystemViewBody extends StatefulWidget {
   const _SolarSystemViewBody();
 
@@ -65,9 +61,8 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     with SingleTickerProviderStateMixin {
   double zoom = 1.0;
   double dragRotation = 0.0;
-  Offset pointerOffset = Offset.zero;
-
   bool isShaking = false;
+
   late AudioPlayer audioPlayer;
   late AnimationController _controller;
   late PreloadService _preloadService;
@@ -122,8 +117,6 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     super.dispose();
   }
 
-  // ========== CORE ORBIT AND POSITION LOGIC ==========
-
   double rotationAngle(Planet planet) {
     final speed = orbitSpeeds[planet.positionFromSun] ?? 0.2;
     final offset = orbitOffsets[planet.positionFromSun] ?? 0.0;
@@ -144,11 +137,9 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     return Offset(x - p.radius, y - p.radius) + Offset(shakeX, shakeY);
   }
 
-  // ========== FLARE HANDLING ==========
-
   Future<void> triggerSolarFlare(SolarSystemProvider provider) async {
     provider.triggerFlare();
-    _playFlareEffects(); // Run without blocking
+    _playFlareEffects();
     setState(() => isShaking = true);
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) setState(() => isShaking = false);
@@ -172,8 +163,6 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
       unawaited(audioPlayer.play(AssetSource('sounds/flare.mp3')));
     } catch (_) {}
   }
-
-  // ========== SUN STAGES ==========
 
   void _increaseSunLevel() {
     setState(() {
@@ -199,8 +188,6 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     }
   }
 
-  // ========== MAIN BUILD ==========
-
   @override
   Widget build(BuildContext context) {
     final solarProvider = Provider.of<SolarSystemProvider>(context);
@@ -219,11 +206,6 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
             dragRotation += details.focalPointDelta.dx * 0.01;
           });
         },
-        onTap: () {
-          if (solarProvider.selectedPlanet != null) {
-            solarProvider.selectPlanet(null);
-          }
-        },
         child: AnimatedBuilder(
           animation: _controller,
           builder: (_, __) {
@@ -238,7 +220,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
               children: [
                 StarfieldWidget(rotation: dragRotation, zoom: zoom),
 
-                /// Orbits
+                // Orbits
                 Positioned.fill(
                   child: CustomPaint(
                     painter: OrbitPainter(
@@ -252,7 +234,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   ),
                 ),
 
-                /// Sun
+                // Sun
                 Center(
                   child: Container(
                     width: 80 + sunLevel * 10,
@@ -273,7 +255,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   ),
                 ),
 
-                /// Planets
+                // Planets
                 for (var p in planets)
                   if (p.positionFromSun != 0)
                     Positioned(
@@ -293,25 +275,24 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   SolarFlareWidget(
                     zoom: zoom,
                     planets: planets,
-                    cameraOffset: center,
                     sunRadius: 80 + sunLevel * 10,
                   ),
 
-                /// Level 2+ Earth Visualization
-                if (levelBrain.currentLevel >= 2) const EarthMagneticVisual(),
+                if (levelBrain.currentLevel >= 2)
+                  const EarthMagneticVisual(),
 
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: solarProvider.selectedPlanet != null
-                      ? _buildFloatingInfoCard(
-                          solarProvider.selectedPlanet!,
-                          planetPositions[solarProvider.selectedPlanet!] ?? center,
-                          solarProvider,
-                        )
-                      : const SizedBox.shrink(),
+                // LEFT SIDE horizontal NavBar
+                Positioned(
+                  top: 20,
+                  left: 20,
+                  child: NavBar(
+                    onPlanetSelected: (planet) =>
+                        solarProvider.selectPlanet(planet),
+                    onCenterView: () {},
+                  ),
                 ),
 
-                /// Controls
+                // Right-bottom controls
                 Positioned(
                   right: 20,
                   bottom: 20,
@@ -334,6 +315,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   ),
                 ),
 
+                // Level Overlay
                 Positioned(
                   left: 20,
                   bottom: 20,
@@ -346,49 +328,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
       ),
     );
   }
-
-  // ========== INFO CARD ==========
-
-  Widget _buildFloatingInfoCard(
-      Planet p, Offset pos, SolarSystemProvider provider) {
-    final screen = MediaQuery.of(context).size;
-    final clampX = pos.dx.clamp(12.0, screen.width - 300.0);
-    final clampY = pos.dy.clamp(60.0, screen.height - 320.0);
-
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 420),
-      tween: Tween(begin: 0.0, end: 1.0),
-      builder: (context, t, child) {
-        final safeT = t.clamp(0.0, 1.0);
-        final dx = (pointerOffset.dx - screen.width / 2) / screen.width;
-        final dy = (pointerOffset.dy - screen.height / 2) / screen.height;
-        final tiltX = (dy * 0.3).clamp(-0.3, 0.3);
-        final tiltY = (dx * -0.3).clamp(-0.3, 0.3);
-
-        final matrix = Matrix4.identity()
-          ..translate(clampX, clampY, (1 - safeT) * -30)
-          ..rotateX(tiltX)
-          ..rotateY(tiltY)
-          ..scale(safeT, safeT, 1.0);
-
-        return Opacity(
-          opacity: safeT,
-          child:
-              Transform(transform: matrix, alignment: Alignment.center, child: child),
-        );
-      },
-      child: SizedBox(
-        width: 280,
-        child: FloatingPlanetCard(
-          planet: p,
-          onClose: () => provider.selectPlanet(null),
-        ),
-      ),
-    );
-  }
 }
-
-// ========== ORBIT PAINTER ==========
 
 class OrbitPainter extends CustomPainter {
   final Offset center;
@@ -429,66 +369,4 @@ class OrbitPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-// ========== FLOATING CARD ==========
-
-class FloatingPlanetCard extends StatelessWidget {
-  final Planet planet;
-  final VoidCallback onClose;
-
-  const FloatingPlanetCard({
-    super.key,
-    required this.planet,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      color: Colors.black.withOpacity(0.85),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  planet.name,
-                  style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white70),
-                  onPressed: onClose,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              planet.description,
-              style: const TextStyle(fontSize: 16, color: Colors.white70),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text('Radius: ${planet.radius} km',
-                    style: const TextStyle(color: Colors.white54)),
-                const SizedBox(width: 16),
-                Text('Orbit: ${planet.positionFromSun}',
-                    style: const TextStyle(color: Colors.white54)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

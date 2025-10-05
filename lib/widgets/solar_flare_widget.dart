@@ -5,14 +5,12 @@ import '../models/planet_data.dart';
 class SolarFlareWidget extends StatefulWidget {
   final double zoom;
   final List<Planet> planets;
-  final Offset cameraOffset;
   final double sunRadius;
 
   const SolarFlareWidget({
     super.key,
     required this.zoom,
     required this.planets,
-    required this.cameraOffset,
     required this.sunRadius,
   });
 
@@ -25,18 +23,28 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
   late AnimationController _controller;
   final Map<String, bool> _planetHit = {};
 
-  double _maxOrbitDistance() {
-    double maxDistance = 0;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(); // continuous pulse
+
+    // Initialize hit state for each planet
     for (var p in widget.planets) {
-      if (p.name == "Sun") continue;
-      final distance = _orbitRadiusFor(p);
-      if (distance > maxDistance) maxDistance = distance;
+      _planetHit[p.name] = false;
     }
-    return maxDistance + 150; // extra space
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   double _orbitRadiusFor(Planet p) {
-    // same scaling as SolarSystemView
+    // Scaling same as SolarSystemView
     const double distanceScale = 4.0;
     double extraSpacing;
     switch (p.positionFromSun) {
@@ -70,23 +78,14 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
     return (p.distanceFromSun * distanceScale * 0.001 + extraSpacing) * widget.zoom;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(); // continuous pulse
-
+  double _maxOrbitDistance() {
+    double maxDistance = 0;
     for (var p in widget.planets) {
-      _planetHit[p.name] = false;
+      if (p.name == "Sun") continue;
+      final distance = _orbitRadiusFor(p);
+      if (distance > maxDistance) maxDistance = distance;
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    return maxDistance + 150; // extra space
   }
 
   @override
@@ -94,16 +93,14 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Sun center
-    final centerX = screenWidth / 2 + widget.cameraOffset.dx;
-    final centerY = screenHeight / 2 + widget.cameraOffset.dy;
-
+    // Fixed sun center (no camera offset)
+    final sunCenter = Offset(screenWidth / 2, screenHeight / 2);
     final maxDistance = _maxOrbitDistance();
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-        final radius = _controller.value * maxDistance;
+        final flareRadius = _controller.value * maxDistance;
         final opacity = (1 - _controller.value).clamp(0.0, 1.0);
 
         List<Widget> planetEffects = [];
@@ -113,18 +110,18 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
 
           final orbitRadius = _orbitRadiusFor(planet);
 
-          // Check if planet is hit by the flare
-          final distanceDiff = (radius - orbitRadius).abs();
+          // Determine if planet is hit by flare
+          final distanceDiff = (flareRadius - orbitRadius).abs();
           _planetHit[planet.name] = distanceDiff < 12.0;
 
-          // vibration magnitude based on proximity and orbit distance
-          final shake = _planetHit[planet.name]! ? 6.0 * (1 / planet.positionFromSun) : 0.0;
-          final angle = planet.positionFromSun * pi / 4; // fixed angle based on orbit
-          final dx = cos(angle) * shake;
-          final dy = sin(angle) * shake;
+          final shakeMagnitude =
+              _planetHit[planet.name]! ? 6.0 * (1 / planet.positionFromSun) : 0.0;
+          final angle = planet.positionFromSun * pi / 4; // fixed orbit angle
+          final dx = cos(angle) * shakeMagnitude;
+          final dy = sin(angle) * shakeMagnitude;
 
-          final planetX = centerX + cos(angle) * orbitRadius + dx;
-          final planetY = centerY + sin(angle) * orbitRadius + dy;
+          final planetX = sunCenter.dx + cos(angle) * orbitRadius + dx;
+          final planetY = sunCenter.dy + sin(angle) * orbitRadius + dy;
 
           planetEffects.add(
             Positioned(
@@ -145,13 +142,13 @@ class _SolarFlareWidgetState extends State<SolarFlareWidget>
 
         return Stack(
           children: [
-            // Expanding flare ring
+            // Expanding flare ring from sun
             Positioned(
-              left: centerX - radius,
-              top: centerY - radius,
+              left: sunCenter.dx - flareRadius,
+              top: sunCenter.dy - flareRadius,
               child: Container(
-                width: radius * 2,
-                height: radius * 2,
+                width: flareRadius * 2,
+                height: flareRadius * 2,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
