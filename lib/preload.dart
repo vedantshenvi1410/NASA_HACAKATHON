@@ -3,7 +3,7 @@ import '../models/planet_data.dart';
 import '../Rdata/gemini_service.dart';
 
 class PreloadService {
-  final GeminiService _geminiService = GeminiService();
+  final ChatGPTService _geminiService = ChatGPTService();
 
   /// Stores preloaded AI summaries for each planet
   final Map<String, String> _planetSummaries = {};
@@ -34,6 +34,7 @@ class PreloadService {
           await _geminiService.generateSunEffectPrompt(planet, sunLevel);
       _planetSummaries[planet.name] = summary;
     } catch (e) {
+      print(e);
       _planetSummaries[planet.name] =
           "No AI data available. ${planet.name} conditions are unknown.";
     }

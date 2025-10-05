@@ -1,55 +1,55 @@
 import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/planet_data.dart';
 
-class GeminiService {
-  // Load API key from .env
-  final String apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+class ChatGPTService {
+  final String apiKey = dotenv.env['OPENAI_API_KEY'] ?? '';
+  final String baseUrl = 'https://api.openai.com/v1/chat/completions';
 
-  final String baseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=';
-
-  /// Generates a short summary about planetary living conditions
+  /// Generates short environmental summaries using the improved NASA-based prompt
   Future<String> generateSunEffectPrompt(Planet planet, int sunLevel) async {
-    if (apiKey.isEmpty) {
-      throw Exception("Gemini API key not set in .env");
-    }
-
     final prompt = _generatePrompt(planet, sunLevel);
 
-    final uri = Uri.parse('$baseUrl$apiKey');
     final body = jsonEncode({
-      "contents": [
+      "model": "gpt-4o-mini",
+      "messages": [
         {
-          "parts": [
-            {"text": prompt}
-          ]
+          "role": "system",
+          "content": "You are a scientific AI assistant specializing in solar physics and planetary environments."
+        },
+        {
+          "role": "user",
+          "content": prompt
         }
-      ]
+      ],
+      "temperature": 0.7,
+      "max_tokens": 150
     });
 
     final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse(baseUrl),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $apiKey',
+      },
       body: body,
     );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
-      return decoded['candidates'][0]['content']['parts'][0]['text'] ?? 
-             "No summary returned by Gemini API.";
+      return decoded['choices'][0]['message']['content'].toString().trim();
     } else {
-      throw Exception("Gemini API Error: ${response.body}");
+      throw Exception("ChatGPT API Error: ${response.body}");
     }
   }
 
-  /// Internal method to generate prompt
+  /// NASA-informed concise prompt for planetary impact
   String _generatePrompt(Planet planet, int sunLevel) {
     return """
-Provide a short 2-3 sentence summary about the living conditions on ${planet.name}, 
-considering the Sun's stage $sunLevel, temperature, and radiation effects. 
-Focus only on habitability or planetary environment. Do not write a long story.
+In 2–3 sentences, describe how solar flares, coronal mass ejections (CMEs), and high-energy radiation from the Sun — currently in stage $sunLevel — affect conditions on ${planet.name}. 
+Base your answer on NASA’s understanding of solar storms and flares (https://science.nasa.gov/sun/solar-storms-and-flares/). 
+Consider ${planet.name}'s distance from the Sun, its magnetic field, and atmosphere. Focus on temperature, radiation levels, and habitability, using clear and brief scientific language.
 """;
   }
 }
