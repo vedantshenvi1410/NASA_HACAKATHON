@@ -16,7 +16,7 @@ class ProjectHeliosApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Project Helios',
+      title: 'ChromoSphere',
       theme: ThemeData.dark(useMaterial3: true),
       home: const SolarSystemView(),
     );
