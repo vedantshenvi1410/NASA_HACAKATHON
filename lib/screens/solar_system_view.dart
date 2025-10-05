@@ -21,11 +21,12 @@ class SolarSystemProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void triggerFlare({Duration duration = const Duration(seconds: 3)}) {
-    if (flareActive) return;
+  void triggerFlare() {
     flareActive = true;
     notifyListeners();
-    Future.delayed(duration, () {
+
+    // flare lasts 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
       flareActive = false;
       notifyListeners();
     });
@@ -101,6 +102,7 @@ class _SolarSystemViewState extends State<SolarSystemView>
         setState(() {});
       });
 
+    // trigger flare every 30 seconds
     _sunEventTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _solarProvider.triggerFlare();
     });
@@ -250,6 +252,11 @@ class _SolarSystemViewState extends State<SolarSystemView>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
+    final sunCenter = Offset(
+      screenWidth / 2 + cameraOffset.dx,
+      screenHeight / 2 + cameraOffset.dy,
+    );
+
     return Stack(
       children: [
         StarfieldWidget(rotation: dragRotation, zoom: zoom),
@@ -262,9 +269,10 @@ class _SolarSystemViewState extends State<SolarSystemView>
             orbitRadiusFor: _orbitRadiusFor,
           ),
         ),
+        // Sun
         Positioned(
-          left: (screenWidth / 2 - _sunRadius() * zoom) + cameraOffset.dx,
-          top: (screenHeight / 2 - _sunRadius() * zoom) + cameraOffset.dy,
+          left: sunCenter.dx - _sunRadius() * zoom,
+          top: sunCenter.dy - _sunRadius() * zoom,
           child: Container(
             width: _sunRadius() * 2 * zoom,
             height: _sunRadius() * 2 * zoom,
@@ -276,11 +284,12 @@ class _SolarSystemViewState extends State<SolarSystemView>
             ),
           ),
         ),
+        // Planets
         ...planets.where((p) => p.name != "Sun").map((p) {
           final orbitRadius = _orbitRadiusFor(p, zoom);
           final angle = _planetAngle(p);
-          final centerX = (screenWidth / 2 + cameraOffset.dx) + cos(angle) * orbitRadius;
-          final centerY = (screenHeight / 2 + cameraOffset.dy) + sin(angle) * orbitRadius;
+          final centerX = sunCenter.dx + cos(angle) * orbitRadius;
+          final centerY = sunCenter.dy + sin(angle) * orbitRadius;
 
           return Positioned(
             left: centerX - p.radius * zoom,
@@ -294,15 +303,22 @@ class _SolarSystemViewState extends State<SolarSystemView>
           );
         }),
         CometWidget(zoom: zoom),
-        if (_solarProvider.flareActive)
-          SolarFlareWidget(zoom: zoom, planets: planets),
-        if (_solarProvider.selectedPlanet != null)
+        // Solar Flare
+        if (provider.flareActive)
+          SolarFlareWidget(
+            zoom: zoom,
+            planets: planets,
+            cameraOffset: cameraOffset,
+            sunRadius: _sunRadius(),
+          ),
+        // Planet details
+        if (provider.selectedPlanet != null)
           PlanetDetailsPanel(
-            planet: _solarProvider.selectedPlanet!,
+            planet: provider.selectedPlanet!,
             summary: _preloadService
-                    .getSummary(_solarProvider.selectedPlanet!.name) ??
+                    .getSummary(provider.selectedPlanet!.name) ??
                 "Loading summary...",
-            onClose: () => _solarProvider.selectPlanet(null),
+            onClose: () => provider.selectPlanet(null),
           ),
       ],
     );
