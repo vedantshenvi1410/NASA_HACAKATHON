@@ -16,6 +16,7 @@ import '../backend/level_brain.dart';
 import '../components/level_overlay.dart';
 import '../widgets/earth_magnetic_visual.dart';
 
+/// PROVIDER
 class SolarSystemProvider extends ChangeNotifier {
   Planet? selectedPlanet;
   bool flareActive = false;
@@ -35,6 +36,7 @@ class SolarSystemProvider extends ChangeNotifier {
   }
 }
 
+/// MAIN VIEW
 class SolarSystemView extends StatelessWidget {
   const SolarSystemView({super.key});
 
@@ -50,6 +52,7 @@ class SolarSystemView extends StatelessWidget {
   }
 }
 
+/// STATEFUL BODY
 class _SolarSystemViewBody extends StatefulWidget {
   const _SolarSystemViewBody();
 
@@ -76,26 +79,23 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
   @override
   void initState() {
     super.initState();
+
     _preloadService = PreloadService();
+
     _controller =
         AnimationController(vsync: this, duration: const Duration(seconds: 60))
           ..repeat();
     audioPlayer = AudioPlayer();
 
     final random = Random();
-    orbitOffsets = {
-      for (var p in planets) p.positionFromSun: random.nextDouble() * 2 * pi
-    };
-    orbitSpeeds = {
-      for (var p in planets) p.positionFromSun: 0.6 / (p.positionFromSun + 0.8)
-    };
+    orbitOffsets = {for (var p in planets) p.positionFromSun: random.nextDouble() * 2 * pi};
+    orbitSpeeds = {for (var p in planets) p.positionFromSun: 0.6 / (p.positionFromSun + 0.8)};
 
     _preloadService.preloadAll(planets, sunLevel);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final levelBrain = Provider.of<LevelBrain>(context, listen: false);
-      final solarProvider =
-          Provider.of<SolarSystemProvider>(context, listen: false);
+      final solarProvider = Provider.of<SolarSystemProvider>(context, listen: false);
 
       _flareTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
         if (!mounted) {
@@ -226,10 +226,8 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                     painter: OrbitPainter(
                       center: center,
                       baseOrbit: baseOrbit * zoom,
-                      maxIndex:
-                          planets.map((p) => p.positionFromSun).fold<int>(0, max),
-                      t: (_controller.lastElapsedDuration?.inMilliseconds ?? 0) /
-                          60000.0,
+                      maxIndex: planets.map((p) => p.positionFromSun).fold<int>(0, max),
+                      t: (_controller.lastElapsedDuration?.inMilliseconds ?? 0) / 60000.0,
                     ),
                   ),
                 ),
@@ -286,8 +284,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   top: 20,
                   left: 20,
                   child: NavBar(
-                    onPlanetSelected: (planet) =>
-                        solarProvider.selectPlanet(planet),
+                    onPlanetSelected: (planet) => solarProvider.selectPlanet(planet),
                     onCenterView: () {},
                   ),
                 ),
@@ -307,8 +304,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: _increaseSunLevel,
-                        style:
-                            ElevatedButton.styleFrom(backgroundColor: _sunColor()),
+                        style: ElevatedButton.styleFrom(backgroundColor: _sunColor()),
                         child: Text('Sun Stage $sunLevel'),
                       ),
                     ],
@@ -321,6 +317,62 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
                   bottom: 20,
                   child: LevelOverlay(level: levelBrain.currentLevel),
                 ),
+
+                // PLANET INFO PANEL
+                if (solarProvider.selectedPlanet != null)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOut,
+                      height: 200,
+                      width: MediaQuery.of(context).size.width * 0.9,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                solarProvider.selectedPlanet!.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white),
+                                onPressed: () => solarProvider.selectPlanet(null),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Text(
+                                solarProvider.selectedPlanet!.description ??
+                                    "No description available",
+                                style: const TextStyle(color: Colors.white70, fontSize: 16),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -330,6 +382,7 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
   }
 }
 
+/// ORBIT PAINTER
 class OrbitPainter extends CustomPainter {
   final Offset center;
   final double baseOrbit;
@@ -347,8 +400,7 @@ class OrbitPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (int i = 1; i <= maxIndex; i++) {
       final r = baseOrbit + 60.0 * i;
-      final rect =
-          Rect.fromCenter(center: center, width: r * 2, height: r * 2 * 0.6);
+      final rect = Rect.fromCenter(center: center, width: r * 2, height: r * 2 * 0.6);
       final paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0
