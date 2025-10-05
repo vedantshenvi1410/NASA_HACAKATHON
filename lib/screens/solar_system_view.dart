@@ -1,15 +1,17 @@
+// lib/screens/solar_system_view.dart
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:vibration/vibration.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../models/planet_data.dart';
 import '../widgets/planet_widget.dart';
-import '../widgets/planet_details_panel.dart';
 import '../widgets/solar_flare_widget.dart';
 import '../widgets/starfield_widget.dart';
 import '../widgets/comet_widget.dart';
-import '../components/navbar.dart';
 import '../preload.dart';
 import '../backend/level_brain.dart';
 import '../components/level_overlay.dart';
@@ -34,7 +36,7 @@ class SolarSystemProvider extends ChangeNotifier {
   }
 }
 
-/// Main view wrapper, properly provides LevelBrain & SolarSystemProvider
+/// Main wrapper
 class SolarSystemView extends StatelessWidget {
   const SolarSystemView({super.key});
 
@@ -50,7 +52,7 @@ class SolarSystemView extends StatelessWidget {
   }
 }
 
-/// Actual SolarSystemView body, stateful
+/// Actual body
 class _SolarSystemViewBody extends StatefulWidget {
   const _SolarSystemViewBody();
 
@@ -59,177 +61,80 @@ class _SolarSystemViewBody extends StatefulWidget {
 }
 
 class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   double zoom = 1.0;
   double dragRotation = 0.0;
-  Offset cameraOffset = Offset.zero;
-  Offset _previousFocalPoint = Offset.zero;
-  double _startZoom = 1.0;
+  Offset pointerOffset = Offset.zero;
 
-  late final AnimationController _orbitController;
-  late final AnimationController _moveController;
-  Animation<Offset>? _cameraAnim;
-  Animation<double>? _zoomAnim;
-
+  bool isShaking = false;
+  late AudioPlayer audioPlayer;
+  late AnimationController _controller;
   late PreloadService _preloadService;
   int sunLevel = 1;
 
-  final Map<String, double> _planetAngleOffsets = {
-    'Mercury': 0.0,
-    'Venus': pi / 5,
-    'Earth': 2 * pi / 5,
-    'Mars': 3 * pi / 5,
-    'Jupiter': pi,
-    'Saturn': pi / 3,
-    'Uranus': 4 * pi / 3,
-    'Neptune': 5 * pi / 4,
-  };
-
-  final Map<String, double> _orbitalSpeeds = {
-    'Mercury': 4.15,
-    'Venus': 1.62,
-    'Earth': 1.0,
-    'Mars': 0.53,
-    'Jupiter': 0.084,
-    'Saturn': 0.034,
-    'Uranus': 0.0119,
-    'Neptune': 0.006,
-  };
+  late Map<int, double> orbitOffsets;
+  late Map<int, double> orbitSpeeds;
 
   @override
   void initState() {
     super.initState();
     _preloadService = PreloadService();
-    _orbitController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 240))
+    _controller =
+        AnimationController(vsync: this, duration: const Duration(seconds: 60))
           ..repeat();
+    audioPlayer = AudioPlayer();
 
-    _moveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..addListener(() {
-        if (_cameraAnim != null) cameraOffset = _cameraAnim!.value;
-        if (_zoomAnim != null) zoom = _zoomAnim!.value;
-        setState(() {});
-      });
+    final random = Random();
+    orbitOffsets = {for (var p in planets) p.positionFromSun: random.nextDouble() * 2 * pi};
+    orbitSpeeds = {for (var p in planets) p.positionFromSun: 0.6 / (p.positionFromSun + 0.8)};
 
-    // Preload planet data for level 1
     _preloadService.preloadAll(planets, sunLevel);
 
-    // Automatic flare timer will be triggered in post-frame callback
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final solarProvider =
-          Provider.of<SolarSystemProvider>(context, listen: false);
       final levelBrain = Provider.of<LevelBrain>(context, listen: false);
-
+      final solarProvider = Provider.of<SolarSystemProvider>(context, listen: false);
       Timer.periodic(const Duration(seconds: 30), (_) {
-        if (levelBrain.currentLevel >= 3) {
-          solarProvider.triggerFlare();
-        }
+        if (levelBrain.currentLevel >= 3) solarProvider.triggerFlare();
       });
     });
   }
 
   @override
   void dispose() {
-    _orbitController.dispose();
-    _moveController.dispose();
+    _controller.dispose();
+    audioPlayer.dispose();
     super.dispose();
   }
 
-  double _planetAngle(Planet planet) {
-    final baseSpeed = _orbitalSpeeds[planet.name] ?? 1.0;
-    final offset = _planetAngleOffsets[planet.name] ?? 0.0;
-    return (_orbitController.value * 2 * pi * baseSpeed) + dragRotation + offset;
+  double rotationAngle(Planet planet) {
+    final speed = orbitSpeeds[planet.positionFromSun] ?? 0.2;
+    final offset = orbitOffsets[planet.positionFromSun] ?? 0.0;
+    final time = _controller.lastElapsedDuration?.inMilliseconds ?? 0;
+    return (time * 0.0005 * speed) + dragRotation + offset;
   }
 
-  double _orbitRadiusFor(Planet planet, double zoom) {
-    const double scale = 4.0;
-    double baseOffset;
-    switch (planet.positionFromSun) {
-      case 1:
-        baseOffset = 140;
-        break;
-      case 2:
-        baseOffset = 240;
-        break;
-      case 3:
-        baseOffset = 340;
-        break;
-      case 4:
-        baseOffset = 500;
-        break;
-      case 5:
-        baseOffset = 850;
-        break;
-      case 6:
-        baseOffset = 1350;
-        break;
-      case 7:
-        baseOffset = 1850;
-        break;
-      case 8:
-        baseOffset = 2500;
-        break;
-      default:
-        baseOffset = planet.positionFromSun * 100.0;
+  Offset planetOffset(Planet p, Offset center, double angle, double baseOrbit) {
+    final orbitR = (baseOrbit + 60.0 * p.positionFromSun) * zoom;
+    double shakeX = 0, shakeY = 0;
+    if (isShaking) {
+      final rand = Random();
+      shakeX = (rand.nextDouble() - 0.5) * 8;
+      shakeY = (rand.nextDouble() - 0.5) * 8;
     }
-    return (planet.distanceFromSun * scale * 0.001 + baseOffset) * zoom;
+    final x = center.dx + orbitR * cos(angle);
+    final y = center.dy + orbitR * sin(angle) * 0.6; // oblong
+    return Offset(x - p.radius, y - p.radius) + Offset(shakeX, shakeY);
   }
 
-  void _animateCenterOnPlanet(Planet planet, {double targetZoom = 1.2}) {
-    _moveController.stop();
-    final radius = _orbitRadiusFor(planet, targetZoom);
-    final angle = _planetAngle(planet);
-    final pos = Offset(cos(angle) * radius, sin(angle) * radius);
-
-    _cameraAnim =
-        Tween<Offset>(begin: cameraOffset, end: -pos).animate(CurvedAnimation(
-      parent: _moveController,
-      curve: Curves.easeOutCubic,
-    ));
-    _zoomAnim =
-        Tween<double>(begin: zoom, end: targetZoom).animate(CurvedAnimation(
-      parent: _moveController,
-      curve: Curves.easeOutCubic,
-    ));
-
-    _moveController.forward(from: 0.0);
-
-    Provider.of<SolarSystemProvider>(context, listen: false)
-        .selectPlanet(planet);
-  }
-
-  void _animateCenterOnSun({double targetZoom = 1.0}) {
-    _moveController.stop();
-    _cameraAnim =
-        Tween<Offset>(begin: cameraOffset, end: Offset.zero).animate(
-            CurvedAnimation(parent: _moveController, curve: Curves.easeOutCubic));
-    _zoomAnim =
-        Tween<double>(begin: zoom, end: targetZoom).animate(CurvedAnimation(
-      parent: _moveController,
-      curve: Curves.easeOutCubic,
-    ));
-    _moveController.forward(from: 0.0);
-
-    Provider.of<SolarSystemProvider>(context, listen: false).selectPlanet(null);
-  }
-
-  void _handleScaleStart(ScaleStartDetails details) {
-    _previousFocalPoint = details.focalPoint;
-    _startZoom = zoom;
-    _moveController.stop();
-  }
-
-  void _handleScaleUpdate(ScaleUpdateDetails details) {
-    final newZoom = (_startZoom * details.scale).clamp(0.4, 2.5);
-    final rotDelta = details.focalPointDelta.dx * 0.002;
-    setState(() {
-      zoom = newZoom;
-      dragRotation += rotDelta;
-      cameraOffset += (details.focalPoint - _previousFocalPoint);
-      _previousFocalPoint = details.focalPoint;
-    });
+  Future<void> triggerSolarFlare(SolarSystemProvider provider) async {
+    provider.triggerFlare();
+    if (await Vibration.hasVibrator() ?? false) {
+      Vibration.vibrate(duration: 100, amplitude: 50);
+    }
+    await audioPlayer.play(AssetSource('sounds/flare.mp3'));
+    setState(() => isShaking = true);
+    await Future.delayed(const Duration(milliseconds: 800));
+    setState(() => isShaking = false);
   }
 
   void _increaseSunLevel() {
@@ -238,7 +143,6 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     });
     _preloadService.clearCache();
     _preloadService.preloadAll(planets, sunLevel);
-
     Provider.of<LevelBrain>(context, listen: false).increaseLevel();
   }
 
@@ -257,183 +161,239 @@ class _SolarSystemViewBodyState extends State<_SolarSystemViewBody>
     }
   }
 
-  double _sunRadius() => 30 + sunLevel * 10;
-
   @override
   Widget build(BuildContext context) {
     final solarProvider = Provider.of<SolarSystemProvider>(context);
     final levelBrain = Provider.of<LevelBrain>(context);
-
     final size = MediaQuery.of(context).size;
-    final sunCenter = Offset(size.width / 2 + cameraOffset.dx,
-        size.height / 2 + cameraOffset.dy);
+    final center = Offset(size.width / 2, size.height / 2);
+    final baseOrbit = min(size.width, size.height) * 0.12;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onScaleStart: _handleScaleStart,
-              onScaleUpdate: _handleScaleUpdate,
-              child: AnimatedBuilder(
-                animation: _orbitController,
-                builder: (_, __) {
-                  return Stack(
-                    children: [
-                      StarfieldWidget(rotation: dragRotation, zoom: zoom),
-                      CustomPaint(
-                        size: size,
-                        painter: _OrbitPainter(
-                          planets: planets,
-                          zoom: zoom,
-                          cameraOffset: cameraOffset,
-                          orbitRadiusFor: _orbitRadiusFor,
-                        ),
-                      ),
-                      // Sun
-                      Positioned(
-                        left: sunCenter.dx - _sunRadius() * zoom,
-                        top: sunCenter.dy - _sunRadius() * zoom,
-                        child: Container(
-                          width: _sunRadius() * 2 * zoom,
-                          height: _sunRadius() * 2 * zoom,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [_sunColor(), _sunColor().withOpacity(0.85)],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Planets
-                      ...planets.where((p) => p.name != "Sun").map((planet) {
-                        final orbit = _orbitRadiusFor(planet, zoom);
-                        final angle = _planetAngle(planet);
-                        final pos = Offset(
-                          sunCenter.dx + cos(angle) * orbit,
-                          sunCenter.dy + sin(angle) * orbit,
-                        );
-                        return Positioned(
-                          left: pos.dx - planet.radius * zoom,
-                          top: pos.dy - planet.radius * zoom,
-                          child: PlanetWidget(
-                            planet: planet,
-                            rotation: angle,
-                            zoom: zoom,
-                            onTap: () =>
-                                _animateCenterOnPlanet(planet, targetZoom: 1.2),
-                          ),
-                        );
-                      }),
-                      CometWidget(zoom: zoom),
-                      if (solarProvider.flareActive)
-                        SolarFlareWidget(
-                          zoom: zoom,
-                          planets: planets,
-                          cameraOffset: cameraOffset,
-                          sunRadius: _sunRadius(),
-                        ),
-                      if (solarProvider.selectedPlanet != null)
-                        PlanetDetailsPanel(
-                          planet: solarProvider.selectedPlanet!,
-                          summary: _preloadService
-                                  .getSummary(solarProvider.selectedPlanet!.name) ??
-                              "Loading summary...",
-                          onClose: () => solarProvider.selectPlanet(null),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            // NavBar
-            Positioned(
-              top: 12,
-              left: 12,
-              right: 12,
-              child: NavBar(
-                onPlanetSelected: (p) => _animateCenterOnPlanet(p, targetZoom: 1.2),
-                onCenterView: () => _animateCenterOnSun(targetZoom: 1.0),
-              ),
-            ),
-            // Sun stage + manual flare button
-            Positioned(
-              right: 20,
-              bottom: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  ElevatedButton(
-                    onPressed: _increaseSunLevel,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _sunColor(),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+      backgroundColor: const Color(0xFF05060A),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onScaleUpdate: (details) {
+          setState(() {
+            zoom = (zoom * details.scale).clamp(0.5, 2.0);
+            dragRotation += details.focalPointDelta.dx * 0.01;
+          });
+        },
+        onTap: () {
+          if (solarProvider.selectedPlanet != null) {
+            solarProvider.selectPlanet(null);
+          }
+        },
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (_, __) {
+            final Map<Planet, Offset> planetPositions = {};
+            for (var p in planets) {
+              if (p.positionFromSun == 0) continue;
+              final angle = rotationAngle(p);
+              final pos = planetOffset(p, center, angle, baseOrbit);
+              planetPositions[p] = pos;
+            }
+
+            return Stack(
+              children: [
+                StarfieldWidget(rotation: dragRotation, zoom: zoom),
+                // Orbits
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: OrbitPainter(
+                      center: center,
+                      baseOrbit: baseOrbit * zoom,
+                      maxIndex: planets.map((p) => p.positionFromSun).fold<int>(0, max),
+                      t: (_controller.lastElapsedDuration?.inMilliseconds ?? 0) / 60000.0,
                     ),
-                    child: Text('Sun Stage $sunLevel'),
                   ),
-                  const SizedBox(height: 8),
-                  if (levelBrain.currentLevel <= 2)
-                    ElevatedButton(
-                      onPressed: () => solarProvider.triggerFlare(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orangeAccent,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Trigger Flare'),
+                ),
+                // Sun
+                Center(
+                  child: Container(
+                    width: 80 + sunLevel * 10,
+                    height: 80 + sunLevel * 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(colors: [_sunColor(), _sunColor().withOpacity(0.8)]),
+                      boxShadow: [BoxShadow(color: _sunColor().withOpacity(0.18), blurRadius: 30, spreadRadius: 8)],
                     ),
-                ],
-              ),
+                  ),
+                ),
+                // Planets
+                for (var p in planets)
+                  if (p.positionFromSun != 0)
+                    Positioned(
+                      left: planetPositions[p]!.dx,
+                      top: planetPositions[p]!.dy,
+                      child: PlanetWidget(
+                        planet: p,
+                        rotation: rotationAngle(p),
+                        zoom: zoom,
+                        onTap: () => solarProvider.selectPlanet(p),
+                      ),
+                    ),
+                CometWidget(zoom: zoom),
+                if (solarProvider.flareActive)
+                  SolarFlareWidget(
+                    zoom: zoom,
+                    planets: planets,
+                    cameraOffset: center,
+                    sunRadius: 80 + sunLevel * 10,
+                  ),
+                // Floating info card
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: solarProvider.selectedPlanet != null
+                      ? _buildFloatingInfoCard(
+                          solarProvider.selectedPlanet!,
+                          planetPositions[solarProvider.selectedPlanet!] ?? center,
+                          solarProvider,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                // Flare button
+                Positioned(
+                  right: 20,
+                  bottom: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      FloatingActionButton(
+                        backgroundColor: Colors.orangeAccent,
+                        onPressed: () => triggerSolarFlare(solarProvider),
+                        child: const Icon(Icons.wb_sunny),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _increaseSunLevel,
+                        style: ElevatedButton.styleFrom(backgroundColor: _sunColor()),
+                        child: Text('Sun Stage $sunLevel'),
+                      ),
+                    ],
+                  ),
+                ),
+                // Level overlay
+                Positioned(left: 20, bottom: 20, child: LevelOverlay(level: levelBrain.currentLevel)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingInfoCard(Planet p, Offset pos, SolarSystemProvider provider) {
+    final screen = MediaQuery.of(context).size;
+    final clampX = pos.dx.clamp(12.0, screen.width - 300.0);
+    final clampY = pos.dy.clamp(60.0, screen.height - 320.0);
+
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 420),
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, t, child) {
+        final safeT = t.clamp(0.0, 1.0);
+        final dx = (pointerOffset.dx - screen.width / 2) / screen.width;
+        final dy = (pointerOffset.dy - screen.height / 2) / screen.height;
+        final tiltX = (dy * 0.3).clamp(-0.3, 0.3);
+        final tiltY = (dx * -0.3).clamp(-0.3, 0.3);
+
+        final matrix = Matrix4.identity()
+          ..translate(clampX, clampY, (1 - safeT) * -30)
+          ..rotateX(tiltX)
+          ..rotateY(tiltY)
+          ..scale(safeT, safeT, 1.0);
+
+        return Opacity(
+          opacity: safeT,
+          child: Transform(transform: matrix, alignment: Alignment.center, child: child),
+        );
+      },
+      child: SizedBox(width: 280, child: FloatingPlanetCard(planet: p, onClose: () => provider.selectPlanet(null))),
+    );
+  }
+}
+
+class OrbitPainter extends CustomPainter {
+  final Offset center;
+  final double baseOrbit;
+  final int maxIndex;
+  final double t;
+
+  OrbitPainter({required this.center, required this.baseOrbit, required this.maxIndex, required this.t});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (int i = 1; i <= maxIndex; i++) {
+      final r = baseOrbit + 60.0 * i;
+      final rect = Rect.fromCenter(center: center, width: r * 2, height: r * 2 * 0.6);
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..shader = SweepGradient(
+          startAngle: 0,
+          endAngle: 2 * pi,
+          colors: [Colors.white.withOpacity(0.05), Colors.white.withOpacity(0.15), Colors.white.withOpacity(0.05)],
+          stops: [(t + 0.0) % 1, (t + 0.1) % 1, (t + 2.0) % 1],
+          transform: GradientRotation(2 * pi * t),
+        ).createShader(rect);
+      canvas.drawOval(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+/// Floating planet info card widget
+class FloatingPlanetCard extends StatelessWidget {
+  final Planet planet;
+  final VoidCallback onClose;
+
+  const FloatingPlanetCard({Key? key, required this.planet, required this.onClose}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: Colors.black.withOpacity(0.85),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  planet.name,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                  onPressed: onClose,
+                ),
+              ],
             ),
-            // Level overlay
-            Positioned(
-              left: 20,
-              bottom: 20,
-              child: LevelOverlay(level: levelBrain.currentLevel),
+            const SizedBox(height: 8),
+            Text(
+              planet.description ?? 'No description available.',
+              style: const TextStyle(fontSize: 16, color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text('Radius: ${planet.radius} km', style: const TextStyle(color: Colors.white54)),
+                const SizedBox(width: 16),
+                Text('Orbit: ${planet.positionFromSun}', style: const TextStyle(color: Colors.white54)),
+              ],
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class _OrbitPainter extends CustomPainter {
-  final List<Planet> planets;
-  final double zoom;
-  final Offset cameraOffset;
-  final double Function(Planet, double) orbitRadiusFor;
-
-  _OrbitPainter({
-    required this.planets,
-    required this.zoom,
-    required this.cameraOffset,
-    required this.orbitRadiusFor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2 + cameraOffset.dx,
-        size.height / 2 + cameraOffset.dy);
-
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
-      ..color = Colors.white.withOpacity(0.12);
-
-    for (final planet in planets.where((p) => p.name != "Sun")) {
-      final r = orbitRadiusFor(planet, zoom);
-      canvas.drawCircle(center, r, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_OrbitPainter oldDelegate) =>
-      oldDelegate.planets != planets ||
-      oldDelegate.zoom != zoom ||
-      oldDelegate.cameraOffset != cameraOffset;
 }
